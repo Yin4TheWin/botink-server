@@ -25,7 +25,7 @@ app.post('/birth/', (req, res) => {
                 res.json(req.body)
             }
             else 
-                res.status(500).send({ error: 'Missing fields' })
+                res.status(500).send({ error: 'dir already exists' })
         })
     }
 })

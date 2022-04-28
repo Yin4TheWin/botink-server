@@ -30,6 +30,7 @@ module.exports={
                 return;
             }
             if (stderr) {
+                console.log(stderr)
                 return;
             }
         })
