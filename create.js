@@ -19,7 +19,6 @@ module.exports={
                 modsEnabled: true, 
                 musicEnabled: true
             }))
-            console.log(`stdout: ${stdout}`);
         })
     },
     runBot(username, projectName){
