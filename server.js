@@ -1,12 +1,18 @@
 const express = require('express');
 const { createBot, runBot } = require('./create');
 var cors = require('cors')
-const app = express()
-const port = 3000
 const { Client } = require('discord.js');
+var https = require('https');
+const fs = require('fs')
+var privateKey  = fs.readFileSync('/etc/letsencrypt/live/discmaker.yinftw.com/privkey.pem', 'utf8');
+var certificate = fs.readFileSync('/etc/letsencrypt/live/discmaker.yinftw.com/fullchain.pem', 'utf8');
+var credentials = {key: privateKey, cert: certificate};
 
+const app = express()
+const port = 443
 app.use(cors())
 app.use(express.json());
+var httpsServer = https.createServer(credentials, app);
 
 app.post('/birth/', (req, res) => {
     //Reading body of POST request: get bot token, username, and desired project name
@@ -49,6 +55,6 @@ app.post('/birth/', (req, res) => {
     }
 })
 
-app.listen(port, () => {
+httpsServer.listen(port, () => {
   console.log(`Example app listening at port ${port}`)
 })
