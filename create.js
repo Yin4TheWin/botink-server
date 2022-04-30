@@ -7,7 +7,7 @@ module.exports={
         //Generate URL for your project
         const dest = "../bots/"+username+"/"+projectName
         //Run the necessary commands to create bot: namely, create new directory, then clone setup files from a base folder into new folder
-        return exec("mkdir "+dest+" && cp ../base/index.js "+dest+"&& cp ../base/deploy-commands.js "+dest+" && touch "+dest+"/afkusers.json "+dest+"/remindusers.json "+dest+"/database.json "+dest+"/listeners.json ", (error, stdout, stderr) => {
+        return exec("cp ../base/index.js "+dest+"&& cp ../base/deploy-commands.js "+dest+" && touch "+dest+"/afkusers.json "+dest+"/remindusers.json "+dest+"/database.json "+dest+"/listeners.json ", (error, stdout, stderr) => {
             if (error) {
                 return;
             }
