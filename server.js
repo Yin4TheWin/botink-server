@@ -1,8 +1,11 @@
+require('dotenv').config()
 const express = require('express');
 const { createBot, runBot, verifyBot } = require('./create');
 var cors = require('cors')
 const { Client } = require('discord.js');
 var https = require('https');
+//Stripe setup tings:
+const stripe = require('stripe')(process.env.STRIPE_TEST_KEY);
 const { exec } = require("child_process");
 const fs = require('fs')
 var privateKey  = fs.readFileSync('/etc/letsencrypt/live/discmaker.yinftw.com/privkey.pem', 'utf8');
@@ -27,12 +30,10 @@ app.post('/verify', (req, res)=>{
     client.login(botToken).then(()=>{
         //Immediately logout!
         client.destroy()
-        exec("mkdir "+dest, (err, stdout, stderr)=>{
-            if(stderr)
-                res.status(400).send(stderr)
-            else
-                res.status(200).json(req.body)
-        })
+        if(fs.existsSync(dest))
+            res.status(400).send("dir exists")
+        else
+            res.status(200).json(req.body)
     }).catch((err)=>{
         //Bot token provided was invalid
         console.log(err.message)
@@ -79,6 +80,45 @@ app.post('/birth/', (req, res) => {
             client.destroy()
             res.status(500).send({ error: 'invalid token' })
         });
+    }
+})
+//Stripe server code:
+app.post("/create-checkout-session", async(req, res) => 
+{
+    console.log("HELLO!")
+    try{
+        const product = await stripe.products.create({
+            name: 'BotInk Subscription',
+            default_price_data: {
+              unit_amount: 1000,
+              currency: 'usd',
+              recurring: {interval: 'month'},
+            },
+            expand: ['default_price'],
+          });
+        const prices = await stripe.prices.create({
+            product: product.id,
+            unit_amount: 499,
+            currency: 'usd',
+            recurring: {interval: 'month'},
+        });
+        const session = await stripe.checkout.sessions.create({
+            payment_method_types:['card'],
+            mode: 'subscription', 
+            line_items: [
+                {
+                  price: prices.id,
+                  // For metered billing, do not pass quantity
+                  quantity: req.body.subQuantity,
+                },
+              ],
+            success_url: process.env.CLIENT_URL,
+            cancel_url: process.env.CLIENT_URL
+        })
+        res.json({ url: session.url })
+    } catch (e)
+    {
+        res.status(500).json({ error: e.message })
     }
 })
 
