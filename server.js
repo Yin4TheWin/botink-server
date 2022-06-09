@@ -83,25 +83,25 @@ app.post('/birth/', (req, res) => {
     }
 })
 //Stripe server code:
-app.post("/create-checkout-session", async(req, res) => 
-{
+app.post("/create-checkout-session", async(req, res) => {
     console.log("HELLO!")
     try{
-        const product = await stripe.products.create({
-            name: 'BotInk Subscription',
-            default_price_data: {
-              unit_amount: 1000,
-              currency: 'usd',
-              recurring: {interval: 'month'},
-            },
-            expand: ['default_price'],
-          });
-        const prices = await stripe.prices.create({
-            product: product.id,
-            unit_amount: 499,
-            currency: 'usd',
-            recurring: {interval: 'month'},
+        //Start by creating customer:
+        //try retrieving customer by email:
+        const customers = await stripe.customers.list({
+            email: '{{CUSTOMER_EMAIL}}',
         });
+        //if fail create new customer:
+        if(!customers){
+            const customer = await stripe.customers.create({
+                email: '{{CUSTOMER_EMAIL}}',
+                name: '{{CUSTOMER_NAME}}',
+            });
+        }
+        //GET product:
+        const product = await stripe.products.retrieve(process.env.STRIPE_PRODUCT_ID);
+        //GET Price:
+        const prices = await stripe.prices.retrieve(process.env.STRIPE_PRICE_ID);
         const session = await stripe.checkout.sessions.create({
             payment_method_types:['card'],
             mode: 'subscription', 
@@ -112,6 +112,7 @@ app.post("/create-checkout-session", async(req, res) =>
                   quantity: req.body.subQuantity,
                 },
               ],
+            //CHANGE TO CORRECT URLS FOR DEPLOYMENT 
             success_url: process.env.CLIENT_URL,
             cancel_url: process.env.CLIENT_URL
         })
@@ -122,6 +123,15 @@ app.post("/create-checkout-session", async(req, res) =>
     }
 })
 
+app.post("/manage-subscription", async(req, res) =>{
+    //adjust subscription such as cancling and shenanigans
+    //Check if customer exists and has valid subscription:
+    //Cancle subscription:
+    const customers = await stripe.customers.list({
+        email: '{{CUSTOMER_EMAIL}}',
+    });
+
+})
 httpsServer.listen(port, () => {
   console.log(`Example app listening at port ${port}`)
 })
