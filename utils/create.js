@@ -16,7 +16,7 @@ module.exports={
                 return;
             }
             //If successful, add bot's config info to config.json
-            fs.appendFileSync(dest+'/config.json', JSON.stringify({
+            fs.writeFileSync(dest+'/config.json', JSON.stringify({
                 clientId: clientId,
                 token: botToken,
                 rootDir: "../../"+dest,

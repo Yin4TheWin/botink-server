@@ -13,6 +13,8 @@ admin.initializeApp({
 });
 var db = admin.database();
 
+const redirectRoot='https://botink.dev/#/'
+
 //Stripe server code:
 router.post("/create-checkout-session", async(req, res) => {
     try{
@@ -27,12 +29,14 @@ router.post("/create-checkout-session", async(req, res) => {
             console.log("customer created")
             customer = await stripe.customers.create({
                 email: req.body.email,
-                name: '{{CUSTOMER_NAME}}',
+                name: req.body.email,
                 metadata: req.body.metadata
             });
         }
         //GET product:
-        const product = await stripe.products.retrieve(process.env.STRIPE_PRODUCT_ID);
+        const product = await stripe.products.create({
+            name: 'Subscription for ' + req.body.projName.replaceAll("-", " "),
+        });
         //GET Price:
         const newPrice = await stripe.prices.create({
             unit_amount: 499,
@@ -41,10 +45,10 @@ router.post("/create-checkout-session", async(req, res) => {
             recurring: {interval: 'month'},
             metadata: {'projectName': req.body.projName}
         });
-        /*//LOGGING FOR TESTING
-        console.log(newPrice);
-        console.log('http://localhost:3000/#/edit/'+req.body.metadata.uid+"/"+req.body.projName);
-        */
+        //LOGGING FOR TESTING
+        //console.log(newPrice);
+        console.log(redirectRoot+'edit/'+req.body.metadata.uid+"/"+req.body.projName);
+        
         const session = await stripe.checkout.sessions.create({
             payment_method_types:['card'],
             mode: 'subscription', 
@@ -58,10 +62,8 @@ router.post("/create-checkout-session", async(req, res) => {
             ],
             subscription_data: {metadata: {'projectName': req.body.projName, 'uid': req.body.metadata.uid}},
             metadata: {'projectName': req.body.projName, 'uid': req.body.metadata.uid},
-            //CHANGE TO CORRECT URLS FOR DEPLOYMENT 
-            //'http://localhost:3000/#/edit/'+req.body.metadata.uid+"/"+req.body.projName,
-            success_url: 'http://localhost:3000/#/edit/'+req.body.metadata.uid+"/"+req.body.projName,
-            cancel_url: process.env.CLIENT_URL
+            success_url: redirectRoot+'edit/'+req.body.metadata.uid+"/"+req.body.projName,
+            cancel_url: redirectRoot+'dashboard'
         })
         res.json({ url: session.url })
     } catch (e)
@@ -69,6 +71,24 @@ router.post("/create-checkout-session", async(req, res) => {
         console.log("ERROR",e.message)
         res.status(500).json({ error: e.message })
     }
+})
+
+router.post("/subscription-status", async(req, res)=>{
+    const username = req.body.username
+    const projectName = req.body.projectName
+    const subscription = await stripe.subscriptions.search({
+        query: 'status:\'active\' AND metadata[\'uid\']:\''+username+'\' AND metadata[\'projectName\']:\''+projectName+'\'',
+    });
+    let status=''
+    if(subscription.data.length>0){
+        if(subscription.data[0].cancel_at_period_end)
+            status='paused'
+        else
+            status='active'
+    }
+    else
+        status='dead'
+    res.status(200).json({status: status})
 })
 
 router.post("/manage-subscription", async(req, res) =>{
@@ -81,11 +101,59 @@ router.post("/manage-subscription", async(req, res) =>{
     });
     customer = customer.data[0];
     const session = await stripe.billingPortal.sessions.create({        
-        customer: customer,
+        customer: customer.id,
         //Add correct return URL
-        return_url: 'https://example.com/account',
+        return_url: redirectRoot+'edit/'+req.body.metadata.uid+"/"+req.body.projName,
     });
-    res.redirect(session.url);
+    res.json({ url: session.url })
+})
+
+router.post("/pause-subscription", async (req, res) => {
+    console.log("searching for "+req.body.uid+" "+req.body.projName)
+    //get subscription with email-project name
+    var subscriptions = await stripe.subscriptions.search({
+        query: 'status:\'active\' AND metadata[\'uid\']:\''+req.body.uid+'\' AND metadata[\'projectName\']:\''+req.body.projName+'\'',
+    });
+    let subscription = subscriptions.data[0]
+    if(subscription){
+        console.log("paused")
+        stripe.subscriptions.update(subscription.id, {cancel_at_period_end: true});
+        //Update customer status in database
+        const updateRef=db.ref().child('users/' + subscription.metadata.uid + '/' + subscription.metadata.projectName)
+        updateRef.update({
+            'status': 'Paused'
+        }).then(()=>{
+            res.status(200).send("Canceled")
+        })
+    }
+    else{
+        console.log("couldnt find")
+        res.status(500).send("could not find subscription")
+    }
+})
+
+router.post("/resume-subscription", async (req, res) => {
+    //get subscription with email-project name
+    var subscriptions = await stripe.subscriptions.search({
+        query: 'status:\'active\' AND metadata[\'uid\']:\''+req.body.uid+'\' AND metadata[\'projectName\']:\''+req.body.projName+'\'',
+    });
+    let subscription = subscriptions.data[0]
+    if(subscription){
+        console.log("resumed")
+        stripe.subscriptions.update(subscription.id, {cancel_at_period_end: false});
+        //Update customer status in database
+        db.ref('users/' + subscription.metadata.uid + '/' + subscription.metadata.projectName).get().then(snapshot=>{
+            db.ref().child('users/' + subscription.metadata.uid + '/' + subscription.metadata.projectName).update({
+                status: snapshot.val().token?'Active':'Ready'
+            }).then(()=>{
+                res.status(200).send("Resumed")
+            })
+        })
+    }
+    else{
+        console.log("couldnt find")
+        res.status(500).send("could not find subscription")
+    }
 })
 
 router.post("/webhook", async (req, res) => {
@@ -108,23 +176,21 @@ router.post("/webhook", async (req, res) => {
                 });
               } else {
                   //If already existed, customer is probably resubscribing. Just set status to appropriate value based on if customer already entered a token
-                  let updates = {}
-                  updates[path] = {
+                  const updateRef=db.ref().child(path)
+                  updateRef.update({
                       status: snapshot.val().token?'Active':'Ready'
-                  }
-                  db.ref().update(updates)
+                  })
               }
           })
           break;
         case 'customer.subscription.deleted':
             console.log("Deleted", uid+" "+projName)
             //Update customer status in database
-            let updates = {}
-            updates[path] = {
-                status: 'Paused'
-            }
-            db.ref().update(updates).then(()=>{
-                //Stop bot process from running on our server
+            const updateRef=db.ref().child(path)
+            updateRef.update({
+                'status': 'Paused'
+            }).then(()=>{
+                //Stop bot process from running on our server, if running
                 exec("pm2 delete ~/bots/"+uid+"/"+projName+"server.js", (error, stdout, stderr) => {
                     if (error) {
                         console.log("err", stderr)
