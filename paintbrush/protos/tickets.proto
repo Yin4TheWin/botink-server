@@ -1,0 +1,38 @@
+syntax = "proto3";
+
+option go_package = "paintbrush/protos";
+
+// next id: 4
+message TicketChannelInfo {
+    string clientId = 1;
+    string guildId = 2;
+    string channelId = 3;
+}
+
+// next id: 2
+message TicketClientInfo {
+    string clientId = 1;
+}
+
+// next id: 5
+message TicketMessageInfo {
+    string clientId = 1;
+    string guildId = 2;
+    string channelId = 3;
+    string message = 4;
+}
+
+message CreateListenerResponse {
+
+}
+
+message CreateMessageResponse {
+
+}
+
+service TicketService {
+    rpc TicketServiceCreateListener (TicketChannelInfo) returns (CreateListenerResponse);
+    rpc TicketServiceFetchListeners (TicketClientInfo) returns (stream TicketChannelInfo);
+    rpc TicketServiceCreateMessage (TicketMessageInfo) returns (CreateMessageResponse);
+    rpc TicketServiceFetchMessages (TicketChannelInfo) returns (stream TicketMessageInfo);
+}
